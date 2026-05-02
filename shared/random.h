@@ -19,8 +19,6 @@ extern "C"
 extern uint32_t g_randomSeed;
 b2Polygon RandomPolygon( float extent );
 
-int GetNumberOfCores( void );
-
 #ifdef __cplusplus
 }
 #endif

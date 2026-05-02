@@ -12,3 +12,7 @@ CMakeUserPresets.json
 .tmp/
 AGENTS.md
 GEMINI.md
+
+**.vcxproj
+**.vcxproj.filters
+**.vcxproj.user

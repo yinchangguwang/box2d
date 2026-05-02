@@ -10,9 +10,9 @@
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
 
+#include "TaskScheduler.h"
 #include "draw.h"
 #include "sample.h"
-#include "utils.h"
 
 #include "box2d/base.h"
 #include "box2d/box2d.h"
@@ -26,20 +26,19 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "implot.h"
-#include "box2d/constants.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef TRACY_ENABLE
+#ifdef BOX2D_PROFILE
 #include <tracy/Tracy.hpp>
 #else
 #define FrameMark
 #endif
 
-#if defined( _MSC_VER )
+#if defined( _MSC_VER ) && 0
 #include <crtdbg.h>
+
 static int MyAllocHook( int allocType, void* userData, size_t size, int blockType, long requestNumber,
 						const unsigned char* filename, int lineNumber )
 {
@@ -58,6 +57,7 @@ static int32_t s_selection = 0;
 static Sample* s_sample = nullptr;
 static bool s_rightMouseDown = false;
 static b2Vec2 s_clickPointWS = b2Vec2_zero;
+static float s_windowScale = 1.0f;
 static float s_framebufferScale = 1.0f;
 
 inline bool IsPowerOfTwo( int32_t x )
@@ -65,7 +65,7 @@ inline bool IsPowerOfTwo( int32_t x )
 	return ( x != 0 ) && ( ( x & ( x - 1 ) ) == 0 );
 }
 
-void* AllocFcn( unsigned int size, int32_t alignment )
+void* AllocFcn( uint32_t size, int32_t alignment )
 {
 	// Allocation must be a multiple of alignment or risk a seg fault
 	// https://en.cppreference.com/w/c/memory/aligned_alloc
@@ -82,10 +82,8 @@ void* AllocFcn( unsigned int size, int32_t alignment )
 	return ptr;
 }
 
-void FreeFcn( void* mem, unsigned int size )
+void FreeFcn( void* mem )
 {
-	(void)size;
-
 #if defined( _MSC_VER ) || defined( __MINGW32__ ) || defined( __MINGW64__ )
 	_aligned_free( mem );
 #else
@@ -128,14 +126,6 @@ static void RestartSample()
 	delete s_sample;
 	s_sample = nullptr;
 	s_context.restart = true;
-	if ( g_sampleEntries[s_context.sampleIndex].capacityFcn != nullptr)
-	{
-		s_context.capacity = g_sampleEntries[s_context.sampleIndex].capacityFcn();
-	}
-	else
-	{
-		s_context.capacity = b2DefaultWorldDef().capacity;
-	}
 	s_sample = g_sampleEntries[s_context.sampleIndex].createFcn( &s_context );
 	s_context.restart = false;
 }
@@ -144,7 +134,6 @@ static void CreateUI( GLFWwindow* window, const char* glslVersion )
 {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImPlot::CreateContext();
 
 	bool success = ImGui_ImplGlfw_InitForOpenGL( window, false );
 	if ( success == false )
@@ -160,26 +149,17 @@ static void CreateUI( GLFWwindow* window, const char* glslVersion )
 		assert( false );
 	}
 
-	ImGui::GetStyle().ScaleAllSizes( s_context.uiScale );
-
 	const char* fontPath = "samples/data/droid_sans.ttf";
 	FILE* file = fopen( fontPath, "rb" );
 
 	if ( file != nullptr )
 	{
 		ImFontConfig fontConfig;
-		fontConfig.RasterizerMultiply = s_context.uiScale * s_framebufferScale;
-
-		float regularSize = floorf( 13.0f * s_context.uiScale );
-		float mediumSize = floorf( 40.0f * s_context.uiScale );
-		float largeSize = floorf( 64.0f * s_context.uiScale );
-
-		ImGuiIO& io = ImGui::GetIO();
-		s_context.regularFont = io.Fonts->AddFontFromFileTTF( fontPath, regularSize, &fontConfig );
-		s_context.mediumFont = io.Fonts->AddFontFromFileTTF( fontPath, mediumSize, &fontConfig );
-		s_context.largeFont = io.Fonts->AddFontFromFileTTF( fontPath, largeSize, &fontConfig );
-
-		ImGui::GetIO().FontDefault = s_context.regularFont;
+		fontConfig.RasterizerMultiply = s_windowScale * s_framebufferScale;
+		s_context.draw.m_smallFont = ImGui::GetIO().Fonts->AddFontFromFileTTF( fontPath, 14.0f, &fontConfig );
+		s_context.draw.m_regularFont = ImGui::GetIO().Fonts->AddFontFromFileTTF( fontPath, 18.0f, &fontConfig );
+		s_context.draw.m_mediumFont = ImGui::GetIO().Fonts->AddFontFromFileTTF( fontPath, 40.0f, &fontConfig );
+		s_context.draw.m_largeFont = ImGui::GetIO().Fonts->AddFontFromFileTTF( fontPath, 64.0f, &fontConfig );
 	}
 	else
 	{
@@ -192,14 +172,13 @@ static void DestroyUI()
 {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
-	ImPlot::DestroyContext();
 	ImGui::DestroyContext();
 }
 
 static void ResizeWindowCallback( GLFWwindow*, int width, int height )
 {
-	s_context.camera.width = float( width );
-	s_context.camera.height = float( height );
+	s_context.camera.m_width = int( width / s_windowScale );
+	s_context.camera.m_height = int( height / s_windowScale );
 }
 
 static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, int mods )
@@ -228,7 +207,7 @@ static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, 
 				}
 				else
 				{
-					s_context.camera.center.x -= 0.5f;
+					s_context.camera.m_center.x -= 0.5f;
 				}
 				break;
 
@@ -241,7 +220,7 @@ static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, 
 				}
 				else
 				{
-					s_context.camera.center.x += 0.5f;
+					s_context.camera.m_center.x += 0.5f;
 				}
 				break;
 
@@ -254,7 +233,7 @@ static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, 
 				}
 				else
 				{
-					s_context.camera.center.y -= 0.5f;
+					s_context.camera.m_center.y -= 0.5f;
 				}
 				break;
 
@@ -267,12 +246,12 @@ static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, 
 				}
 				else
 				{
-					s_context.camera.center.y += 0.5f;
+					s_context.camera.m_center.y += 0.5f;
 				}
 				break;
 
 			case GLFW_KEY_HOME:
-				ResetView( &s_context.camera );
+				s_context.camera.ResetView();
 				break;
 
 			case GLFW_KEY_R:
@@ -306,8 +285,7 @@ static void KeyCallback( GLFWwindow* window, int key, int scancode, int action, 
 				break;
 
 			case GLFW_KEY_TAB:
-				s_context.showUI = !s_context.showUI;
-				break;
+				s_context.draw.m_showUI = !s_context.draw.m_showUI;
 
 			default:
 				if ( s_sample )
@@ -334,12 +312,12 @@ static void MouseButtonCallback( GLFWwindow* window, int button, int action, int
 
 	double xd, yd;
 	glfwGetCursorPos( window, &xd, &yd );
-	b2Vec2 ps = { float( xd ), float( yd ) };
+	b2Vec2 ps = { float( xd ) / s_windowScale, float( yd ) / s_windowScale };
 
 	// Use the mouse to move things around.
 	if ( button == GLFW_MOUSE_BUTTON_1 )
 	{
-		b2Vec2 pw = ConvertScreenToWorld( &s_context.camera, ps );
+		b2Vec2 pw = s_context.camera.ConvertScreenToWorld( ps );
 		if ( action == GLFW_PRESS )
 		{
 			s_sample->MouseDown( pw, button, modifiers );
@@ -354,7 +332,7 @@ static void MouseButtonCallback( GLFWwindow* window, int button, int action, int
 	{
 		if ( action == GLFW_PRESS )
 		{
-			s_clickPointWS = ConvertScreenToWorld( &s_context.camera, ps );
+			s_clickPointWS = s_context.camera.ConvertScreenToWorld( ps );
 			s_rightMouseDown = true;
 		}
 
@@ -367,19 +345,19 @@ static void MouseButtonCallback( GLFWwindow* window, int button, int action, int
 
 static void MouseMotionCallback( GLFWwindow* window, double xd, double yd )
 {
-	b2Vec2 ps = { float( xd ), float( yd ) };
+	b2Vec2 ps = { float( xd ) / s_windowScale, float( yd ) / s_windowScale };
 
 	ImGui_ImplGlfw_CursorPosCallback( window, ps.x, ps.y );
 
-	b2Vec2 pw = ConvertScreenToWorld( &s_context.camera, ps );
+	b2Vec2 pw = s_context.camera.ConvertScreenToWorld( ps );
 	s_sample->MouseMove( pw );
 
 	if ( s_rightMouseDown )
 	{
 		b2Vec2 diff = b2Sub( pw, s_clickPointWS );
-		s_context.camera.center.x -= diff.x;
-		s_context.camera.center.y -= diff.y;
-		s_clickPointWS = ConvertScreenToWorld( &s_context.camera, ps );
+		s_context.camera.m_center.x -= diff.x;
+		s_context.camera.m_center.y -= diff.y;
+		s_clickPointWS = s_context.camera.ConvertScreenToWorld( ps );
 	}
 }
 
@@ -393,26 +371,25 @@ static void ScrollCallback( GLFWwindow* window, double dx, double dy )
 
 	if ( dy > 0 )
 	{
-		s_context.camera.zoom /= 1.1f;
+		s_context.camera.m_zoom /= 1.1f;
 	}
 	else
 	{
-		s_context.camera.zoom *= 1.1f;
+		s_context.camera.m_zoom *= 1.1f;
 	}
 }
 
 static void UpdateUI()
 {
-	int maxWorkers = B2_MAX_WORKERS;
+	int maxWorkers = enki::GetNumHardwareThreads();
 
-	float fontSize = ImGui::GetFontSize();
-	float menuWidth = 13.0f * fontSize;
-	if ( s_context.showUI )
+	float menuWidth = 180.0f;
+	if ( s_context.draw.m_showUI )
 	{
-		ImGui::SetNextWindowPos( { s_context.camera.width - menuWidth - 0.5f * fontSize, 0.5f * fontSize } );
-		ImGui::SetNextWindowSize( { menuWidth, s_context.camera.height - fontSize } );
+		ImGui::SetNextWindowPos( { s_context.camera.m_width - menuWidth - 10.0f, 10.0f } );
+		ImGui::SetNextWindowSize( { menuWidth, s_context.camera.m_height - 20.0f } );
 
-		ImGui::Begin( "Tools", &s_context.showUI,
+		ImGui::Begin( "Tools", &s_context.draw.m_showUI,
 					  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse );
 
 		if ( ImGui::BeginTabBar( "ControlTabs", ImGuiTabBarFlags_None ) )
@@ -435,43 +412,24 @@ static void UpdateUI()
 				ImGui::Checkbox( "Sleep", &s_context.enableSleep );
 				ImGui::Checkbox( "Warm Starting", &s_context.enableWarmStarting );
 				ImGui::Checkbox( "Continuous", &s_context.enableContinuous );
-				ImGui::Checkbox( "Contact Recycling", &s_context.enableRecycling );
 
 				ImGui::Separator();
 
-				ImGui::Checkbox( "Shapes", &s_context.debugDraw.drawShapes );
-				ImGui::Checkbox( "Joints", &s_context.debugDraw.drawJoints );
-				ImGui::Checkbox( "Joint Extras", &s_context.debugDraw.drawJointExtras );
-				ImGui::Checkbox( "Bounds", &s_context.debugDraw.drawBounds );
-				ImGui::Checkbox( "Mass", &s_context.debugDraw.drawMass );
-				ImGui::Checkbox( "Body Names", &s_context.debugDraw.drawBodyNames );
-				ImGui::Checkbox( "Graph Colors", &s_context.debugDraw.drawGraphColors );
-				ImGui::Checkbox( "Islands", &s_context.debugDraw.drawIslands );
+				ImGui::Checkbox( "Shapes", &s_context.drawShapes );
+				ImGui::Checkbox( "Joints", &s_context.drawJoints );
+				ImGui::Checkbox( "Joint Extras", &s_context.drawJointExtras );
+				ImGui::Checkbox( "Bounds", &s_context.drawBounds );
+				ImGui::Checkbox( "Contact Points", &s_context.drawContactPoints );
+				ImGui::Checkbox( "Contact Normals", &s_context.drawContactNormals );
+				ImGui::Checkbox( "Contact Impulses", &s_context.drawContactImpulses );
+				ImGui::Checkbox( "Contact Features", &s_context.drawContactFeatures );
+				ImGui::Checkbox( "Friction Impulses", &s_context.drawFrictionImpulses );
+				ImGui::Checkbox( "Mass", &s_context.drawMass );
+				ImGui::Checkbox( "Body Names", &s_context.drawBodyNames );
+				ImGui::Checkbox( "Graph Colors", &s_context.drawGraphColors );
+				ImGui::Checkbox( "Islands", &s_context.drawIslands );
 				ImGui::Checkbox( "Counters", &s_context.drawCounters );
 				ImGui::Checkbox( "Profile", &s_context.drawProfile );
-				ImGui::Checkbox( "Frame Time", &s_context.frameTime );
-
-				ImGui::Separator();
-
-				{
-					bool changed = false;
-					const char* drawTypes[] = { "None", "Clip", "AnchorA", "AnchorB", "Average" };
-					int drawType = int( s_context.debugDraw.contactDrawType );
-					changed = changed || ImGui::Combo( "Contact", &drawType, drawTypes, IM_ARRAYSIZE( drawTypes ) );
-					s_context.debugDraw.contactDrawType = b2ContactDrawType( drawType );
-				}
-
-				ImGui::Checkbox( "Contact Normals", &s_context.debugDraw.drawContactNormals );
-				ImGui::Checkbox( "Contact Features", &s_context.debugDraw.drawContactFeatures );
-				ImGui::Checkbox( "Contact Forces", &s_context.debugDraw.drawContactForces );
-				ImGui::Checkbox( "Friction Forces", &s_context.debugDraw.drawFrictionForces );
-
-				ImGui::Separator();
-
-				ImGui::PushItemWidth( 80.0f );
-				ImGui::InputFloat( "Joint Scale", &s_context.debugDraw.jointScale );
-				ImGui::InputFloat( "Force Scale", &s_context.debugDraw.forceScale );
-				ImGui::PopItemWidth();
 
 				ImVec2 button_sz = ImVec2( -1, 0 );
 				if ( ImGui::Button( "Pause (P)", button_sz ) )
@@ -571,14 +529,13 @@ int main( int, char** )
 {
 #if defined( _MSC_VER )
 	// Enable memory-leak reports
-	//_CrtSetBreakAlloc( 217 );
 	_CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_FILE );
 	_CrtSetReportFile( _CRT_WARN, _CRTDBG_FILE_STDOUT );
 	//_CrtSetAllocHook(MyAllocHook);
-#endif
 
-#ifdef TRACY_ENABLE
-	tracy::StartupProfiler();
+// How to break at the leaking allocation, in the watch window enter this variable
+// and set it to the allocation number in {}. Do this at the first line in main.
+// {,,ucrtbased.dll}_crtBreakAlloc = <allocation number>
 #endif
 
 	// Install memory hooks
@@ -588,7 +545,7 @@ int main( int, char** )
 	char buffer[128];
 
 	s_context.Load();
-	s_context.workerCount = b2MinInt( 8, GetNumberOfCores() / 2 );
+	s_context.workerCount = b2MinInt( 8, (int)enki::GetNumHardwareThreads() / 2 );
 
 	SortSamples();
 
@@ -622,21 +579,20 @@ int main( int, char** )
 #ifdef __APPLE__
 		glfwGetMonitorContentScale( primaryMonitor, &s_framebufferScale, &s_framebufferScale );
 #else
-		float uiScale = 1.0f;
-		glfwGetMonitorContentScale( primaryMonitor, &uiScale, &uiScale );
-		s_context.uiScale = uiScale;
+		glfwGetMonitorContentScale( primaryMonitor, &s_windowScale, &s_windowScale );
 #endif
 	}
 
 	bool fullscreen = false;
 	if ( fullscreen )
 	{
-		s_context.window = glfwCreateWindow( 1920, 1080, buffer, glfwGetPrimaryMonitor(), nullptr );
+		s_context.window = glfwCreateWindow( int( 1920 * s_windowScale ), int( 1080 * s_windowScale ), buffer,
+											 glfwGetPrimaryMonitor(), nullptr );
 	}
 	else
 	{
-		s_context.window =
-			glfwCreateWindow( int( s_context.camera.width ), int( s_context.camera.height ), buffer, nullptr, nullptr );
+		s_context.window = glfwCreateWindow( int( s_context.camera.m_width * s_windowScale ),
+											 int( s_context.camera.m_height * s_windowScale ), buffer, nullptr, nullptr );
 	}
 
 	if ( s_context.window == nullptr )
@@ -645,6 +601,12 @@ int main( int, char** )
 		glfwTerminate();
 		return -1;
 	}
+
+#ifdef __APPLE__
+	glfwGetWindowContentScale( s_context.window, &s_framebufferScale, &s_framebufferScale );
+#else
+	glfwGetWindowContentScale( s_context.window, &s_windowScale, &s_windowScale );
+#endif
 
 	glfwMakeContextCurrent( s_context.window );
 
@@ -669,8 +631,9 @@ int main( int, char** )
 	glfwSetCursorPosCallback( s_context.window, MouseMotionCallback );
 	glfwSetScrollCallback( s_context.window, ScrollCallback );
 
+	// todo put this in s_context
 	CreateUI( s_context.window, glslVersion );
-	s_context.draw = CreateDraw();
+	s_context.draw.Create(&s_context.camera);
 
 	s_context.sampleIndex = b2ClampInt( s_context.sampleIndex, 0, g_sampleCount - 1 );
 	s_selection = s_context.sampleIndex;
@@ -686,18 +649,17 @@ int main( int, char** )
 		if ( glfwGetKey( s_context.window, GLFW_KEY_Z ) == GLFW_PRESS )
 		{
 			// Zoom out
-			s_context.camera.zoom = b2MinFloat( 1.005f * s_context.camera.zoom, 100.0f );
+			s_context.camera.m_zoom = b2MinFloat( 1.005f * s_context.camera.m_zoom, 100.0f );
 		}
 		else if ( glfwGetKey( s_context.window, GLFW_KEY_X ) == GLFW_PRESS )
 		{
 			// Zoom in
-			s_context.camera.zoom = b2MaxFloat( 0.995f * s_context.camera.zoom, 0.5f );
+			s_context.camera.m_zoom = b2MaxFloat( 0.995f * s_context.camera.m_zoom, 0.5f );
 		}
 
-		int width, height;
-		glfwGetWindowSize( s_context.window, &width, &height );
-		s_context.camera.width = width;
-		s_context.camera.height = height;
+		glfwGetWindowSize( s_context.window, &s_context.camera.m_width, &s_context.camera.m_height );
+		s_context.camera.m_width = int( s_context.camera.m_width / s_windowScale );
+		s_context.camera.m_height = int( s_context.camera.m_height / s_windowScale );
 
 		int bufferWidth, bufferHeight;
 		glfwGetFramebufferSize( s_context.window, &bufferWidth, &bufferHeight );
@@ -707,51 +669,63 @@ int main( int, char** )
 
 		// s_context.draw.DrawBackground();
 
-		// double cursorPosX = 0, cursorPosY = 0;
-		// glfwGetCursorPos( s_context.window, &cursorPosX, &cursorPosY );
-		// ImGui_ImplGlfw_CursorPosCallback( s_context.window, cursorPosX / s_windowScale, cursorPosY / s_windowScale );
+		double cursorPosX = 0, cursorPosY = 0;
+		glfwGetCursorPos( s_context.window, &cursorPosX, &cursorPosY );
+		ImGui_ImplGlfw_CursorPosCallback( s_context.window, cursorPosX / s_windowScale, cursorPosY / s_windowScale );
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
-		// ImGui_ImplGlfw_CursorPosCallback( s_context.window, cursorPosX / s_windowScale, cursorPosY / s_windowScale );
+		ImGui_ImplGlfw_CursorPosCallback( s_context.window, cursorPosX / s_windowScale, cursorPosY / s_windowScale );
 
 		ImGuiIO& io = ImGui::GetIO();
-		io.DisplaySize.x = s_context.camera.width;
-		io.DisplaySize.y = s_context.camera.height;
-		io.DisplayFramebufferScale.x = bufferWidth / s_context.camera.width;
-		io.DisplayFramebufferScale.y = bufferHeight / s_context.camera.height;
+		io.DisplaySize.x = float( s_context.camera.m_width );
+		io.DisplaySize.y = float( s_context.camera.m_height );
+		io.DisplayFramebufferScale.x = bufferWidth / float( s_context.camera.m_width );
+		io.DisplayFramebufferScale.y = bufferHeight / float( s_context.camera.m_height );
 
 		ImGui::NewFrame();
+
+		ImGui::SetNextWindowPos( ImVec2( 0.0f, 0.0f ) );
+		ImGui::SetNextWindowSize( ImVec2( float( s_context.camera.m_width ), float( s_context.camera.m_height ) ) );
+		ImGui::SetNextWindowBgAlpha( 0.0f );
+		ImGui::Begin( "Overlay", nullptr,
+					  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+						  ImGuiWindowFlags_NoScrollbar );
+		ImGui::End();
 
 		if ( s_sample == nullptr )
 		{
 			// delayed creation because imgui doesn't create fonts until NewFrame() is called
-			if ( g_sampleEntries[s_context.sampleIndex].capacityFcn != nullptr )
-			{
-				s_context.capacity = g_sampleEntries[s_context.sampleIndex].capacityFcn();
-			}
-			else
-			{
-				s_context.capacity = b2DefaultWorldDef().capacity;
-			}
 			s_sample = g_sampleEntries[s_context.sampleIndex].createFcn( &s_context );
 		}
 
-		s_sample->ResetText();
-
-		const SampleEntry& entry = g_sampleEntries[s_context.sampleIndex];
-		s_sample->DrawColoredTextLine(b2_colorYellow, "%s : %s", entry.category, entry.name );
+		if ( s_context.draw.m_showUI )
+		{
+			const SampleEntry& entry = g_sampleEntries[s_context.sampleIndex];
+			snprintf( buffer, 128, "%s : %s", entry.category, entry.name );
+			s_sample->DrawTitle( buffer );
+		}
 
 		s_sample->Step();
 
-		DrawScreenString( s_context.draw, 5.0f, s_context.camera.height - 10.0f, b2_colorSeaGreen,
-						  "%.1f ms - step %d - camera (%g, %g, %g)", 1000.0f * frameTime, s_sample->m_stepCount,
-						  s_context.camera.center.x, s_context.camera.center.y, s_context.camera.zoom );
-
-		FlushDraw( s_context.draw, &s_context.camera );
+		s_context.draw.Flush();
 
 		UpdateUI();
 
 		// ImGui::ShowDemoWindow();
+
+		if ( s_context.draw.m_showUI )
+		{
+			snprintf( buffer, 128, "%.1f ms - step %d - camera (%g, %g, %g)", 1000.0f * frameTime, s_sample->m_stepCount,
+					  s_context.camera.m_center.x, s_context.camera.m_center.y, s_context.camera.m_zoom );
+			// snprintf( buffer, 128, "%.1f ms", 1000.0f * frameTime );
+
+			ImGui::Begin( "Overlay", nullptr,
+						  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+							  ImGuiWindowFlags_NoScrollbar );
+			ImGui::SetCursorPos( ImVec2( 5.0f, s_context.camera.m_height - 20.0f ) );
+			ImGui::TextColored( ImColor( 153, 230, 153, 255 ), "%s", buffer );
+			ImGui::End();
+		}
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
@@ -763,21 +737,16 @@ int main( int, char** )
 
 		if ( s_selection != s_context.sampleIndex )
 		{
-			ResetView( &s_context.camera );
+			s_context.camera.ResetView();
 			s_context.sampleIndex = s_selection;
+
+			// #todo restore all drawing settings that may have been overridden by a sample
 			s_context.subStepCount = 4;
-			s_context.debugDraw.drawJoints = true;
+			s_context.drawJoints = true;
+			s_context.useCameraBounds = false;
 
 			delete s_sample;
 			s_sample = nullptr;
-			if ( g_sampleEntries[s_context.sampleIndex].capacityFcn != nullptr )
-			{
-				s_context.capacity = g_sampleEntries[s_context.sampleIndex].capacityFcn();
-			}
-			else
-			{
-				s_context.capacity = b2DefaultWorldDef().capacity;
-			}
 			s_sample = g_sampleEntries[s_context.sampleIndex].createFcn( &s_context );
 		}
 
@@ -798,16 +767,12 @@ int main( int, char** )
 	delete s_sample;
 	s_sample = nullptr;
 
-	DestroyDraw( s_context.draw );
+	s_context.draw.Destroy();
 
 	DestroyUI();
 	glfwTerminate();
 
 	s_context.Save();
-
-#ifdef TRACY_ENABLE
-	tracy::ShutdownProfiler();
-#endif
 
 #if defined( _MSC_VER )
 	_CrtDumpMemoryLeaks();

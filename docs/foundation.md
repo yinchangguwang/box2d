@@ -28,7 +28,7 @@ at run-time using `b2GetVersion()`.
 
 ```c
 b2Version version = b2GetVersion();
-printf("Box2D version %d.%d.%d\n", version.major, version.minor, version.revision);
+printf("Box2D version %d.%d.%d\n", version.major, version.minor, version.patch);
 ```
 
 ## Vector Math
@@ -41,7 +41,8 @@ The math library is kept simple to make Box2D easy to port and maintain.
 ## Multithreading {#multi}
 Box2D has been highly optimized for multithreading. Multithreading is not required and by default Box2D will run single-threaded. If performance is important for your application, you should consider using the multithreading interface.
 
-Box2D has a built-in task scheduler that creates threads. You can optionally connect your own task scheduler if you want more control.
+Box2D multithreading has been designed to work with your application's task system. Box2D does
+not create threads. The Samples application shows how to do this using the open source tasks system [enkiTS](https://github.com/dougbinks/enkiTS).
 
 Multithreading is established for each Box2D world you create and must be hooked up to
 the world definition. See `b2TaskCallback()`, `b2EnqueueTaskCallback()`, and `b2FinishTaskCallback()` for more details. Also see `b2WorldDef::workerCount`, `b2WorldDef::enqueueTask`, and `b2WorldDef::finishTask`.

@@ -61,11 +61,11 @@ public:
 	{
 		if ( context->restart == false )
 		{
-			m_camera->center = { 20.0f, 9.0f };
-			m_camera->zoom = 10.0f;
+			m_camera->m_center = { 20.0f, 9.0f };
+			m_camera->m_zoom = 10.0f;
 		}
 
-		context->debugDraw.drawJoints = false;
+		context->drawJoints = false;
 		m_transform = { { 2.0f, 8.0f }, b2Rot_identity };
 		m_velocity = { 0.0f, 0.0f };
 		m_capsule = { { 0.0f, -0.5f }, { 0.0f, 0.5f }, 0.3f };
@@ -154,20 +154,20 @@ public:
 				b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 				b2Vec2 pivot = { xBase + 1.0f * i, yBase };
-				jointDef.base.bodyIdA = prevBodyId;
-				jointDef.base.bodyIdB = bodyId;
-				jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
-				jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+				jointDef.bodyIdA = prevBodyId;
+				jointDef.bodyIdB = bodyId;
+				jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
+				jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
 				b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 				prevBodyId = bodyId;
 			}
 
 			b2Vec2 pivot = { xBase + 1.0f * count, yBase };
-			jointDef.base.bodyIdA = prevBodyId;
-			jointDef.base.bodyIdB = groundId2;
-			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
-			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.bodyIdA = prevBodyId;
+			jointDef.bodyIdB = groundId2;
+			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
+			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 
@@ -327,19 +327,19 @@ public:
 			m_pogoVelocity = 0.0f;
 
 			b2Vec2 delta = translation;
-			DrawLine( m_draw, origin, origin + delta, b2_colorGray );
+			m_draw->DrawSegment( origin, origin + delta, b2_colorGray );
 
 			if ( m_pogoShape == PogoPoint )
 			{
-				DrawPoint( m_draw, origin + delta, 10.0f, b2_colorGray );
+				m_draw->DrawPoint( origin + delta, 10.0f, b2_colorGray );
 			}
 			else if ( m_pogoShape == PogoCircle )
 			{
-				DrawCircle( m_draw, origin + delta, circle.radius, b2_colorGray );
+				m_draw->DrawCircle( origin + delta, circle.radius, b2_colorGray );
 			}
 			else
 			{
-				DrawLine( m_draw, segment.point1 + delta, segment.point2 + delta, b2_colorGray );
+				m_draw->DrawSegment( segment.point1 + delta, segment.point2 + delta, b2_colorGray );
 			}
 		}
 		else
@@ -350,19 +350,19 @@ public:
 			m_pogoVelocity = b2SpringDamper( m_pogoHertz, m_pogoDampingRatio, offset, m_pogoVelocity, timeStep );
 
 			b2Vec2 delta = castResult.fraction * translation;
-			DrawLine( m_draw, origin, origin + delta, b2_colorGray );
+			m_draw->DrawSegment( origin, origin + delta, b2_colorGray );
 
 			if ( m_pogoShape == PogoPoint )
 			{
-				DrawPoint( m_draw, origin + delta, 10.0f, b2_colorPlum );
+				m_draw->DrawPoint( origin + delta, 10.0f, b2_colorPlum );
 			}
 			else if ( m_pogoShape == PogoCircle )
 			{
-				DrawCircle( m_draw, origin + delta, circle.radius, b2_colorPlum );
+				m_draw->DrawCircle( origin + delta, circle.radius, b2_colorPlum );
 			}
 			else
 			{
-				DrawLine( m_draw, segment.point1 + delta, segment.point2 + delta, b2_colorPlum );
+				m_draw->DrawSegment( segment.point1 + delta, segment.point2 + delta, b2_colorPlum );
 			}
 
 			b2Body_ApplyForce( castResult.bodyId, { 0.0f, -50.0f }, castResult.point, true );
@@ -409,9 +409,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 350.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 25.0f ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_camera->m_height - height - 25.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 340.0f, height ) );
 
 		ImGui::Begin( "Mover", nullptr, 0 );
@@ -497,7 +496,7 @@ public:
 			b2ShapeProxy proxy = b2MakeProxy( &circle.center, 1, circle.radius );
 			b2QueryFilter filter = { MoverBit, DebrisBit };
 			b2World_OverlapShape( m_worldId, &proxy, filter, Kick, this );
-			DrawCircle( m_draw, circle.center, circle.radius, b2_colorGoldenRod );
+			m_draw->DrawCircle( circle.center, circle.radius, b2_colorGoldenRod );
 		}
 
 		Sample::Keyboard( key );
@@ -524,8 +523,7 @@ public:
 				.y = m_elevatorAmplitude * cosf( 1.0f * m_time + B2_PI ) + m_elevatorBase.y,
 			};
 
-			bool wake = true;
-			b2Body_SetTargetTransform( m_elevatorId, { point, b2Rot_identity }, timeStep, wake );
+			b2Body_SetTargetTransform( m_elevatorId, { point, b2Rot_identity }, timeStep );
 		}
 
 		m_time += timeStep;
@@ -569,16 +567,16 @@ public:
 			b2Plane plane = m_planes[i].plane;
 			b2Vec2 p1 = m_transform.p + ( plane.offset - m_capsule.radius ) * plane.normal;
 			b2Vec2 p2 = p1 + 0.1f * plane.normal;
-			DrawPoint( m_draw, p1, 5.0f, b2_colorYellow );
-			DrawLine( m_draw, p1, p2, b2_colorYellow );
+			m_draw->DrawPoint( p1, 5.0f, b2_colorYellow );
+			m_draw->DrawSegment( p1, p2, b2_colorYellow );
 		}
 
 		b2Vec2 p1 = b2TransformPoint( m_transform, m_capsule.center1 );
 		b2Vec2 p2 = b2TransformPoint( m_transform, m_capsule.center2 );
 
 		b2HexColor color = m_onGround ? b2_colorOrange : b2_colorAquamarine;
-		DrawSolidCapsule( m_draw, p1, p2, m_capsule.radius, color );
-		DrawLine( m_draw, m_transform.p, m_transform.p + m_velocity, b2_colorPurple );
+		m_draw->DrawSolidCapsule( p1, p2, m_capsule.radius, color );
+		m_draw->DrawSegment( m_transform.p, m_transform.p + m_velocity, b2_colorPurple );
 
 		b2Vec2 p = m_transform.p;
 		DrawTextLine( "position %.2f %.2f", p.x, p.y );
@@ -587,7 +585,7 @@ public:
 
 		if ( m_lockCamera )
 		{
-			m_camera->center.x = m_transform.p.x;
+			m_camera->m_center.x = m_transform.p.x;
 		}
 	}
 
@@ -648,8 +646,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 20.0f, 9.0f };
-			m_context->camera.zoom = 10.0f;
+			m_context->camera.m_center = { 20.0f, 9.0f };
+			m_context->camera.m_zoom = 10.0f;
 		}
 
 		settings.drawJoints = false;
@@ -741,20 +739,20 @@ public:
 				b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 				b2Vec2 pivot = { xBase + 1.0f * i, yBase };
-				jointDef.base.bodyIdA = prevBodyId;
-				jointDef.base.bodyIdB = bodyId;
-				jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
-				jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+				jointDef.bodyIdA = prevBodyId;
+				jointDef.bodyIdB = bodyId;
+				jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
+				jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
 				b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 				prevBodyId = bodyId;
 			}
 
 			b2Vec2 pivot = { xBase + 1.0f * count, yBase };
-			jointDef.base.bodyIdA = prevBodyId;
-			jointDef.base.bodyIdB = groundId2;
-			jointDef.base.localFrameA.p = b2Body_GetLocalPoint( jointDef.base.bodyIdA, pivot );
-			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( jointDef.base.bodyIdB, pivot );
+			jointDef.bodyIdA = prevBodyId;
+			jointDef.bodyIdB = groundId2;
+			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
+			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 
@@ -1358,9 +1356,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 350.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->m_height - height - 25.0f ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 25.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 340.0f, height ) );
 
 		ImGui::Begin( "Mover", nullptr, 0 );

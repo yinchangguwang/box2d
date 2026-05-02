@@ -3,7 +3,7 @@ include(FetchContent)
 include(CMakeDependentOption)
 
 project(box2d
-	VERSION 3.2.0
+	VERSION 3.1.1
 	DESCRIPTION "A 2D physics engine for games"
 	HOMEPAGE_URL "https://box2d.org"
 	LANGUAGES C CXX
@@ -18,9 +18,6 @@ message(STATUS "CMake C++ compiler: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMake system name: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "CMake host system processor: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
 
-# static link to make leak checking easier (_crtBreakAlloc)
-# set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
 if (MSVC OR APPLE)
 	option(BOX2D_SANITIZE "Enable sanitizers for some builds" OFF)
 	if(BOX2D_SANITIZE)
@@ -33,12 +30,6 @@ if (MSVC OR APPLE)
 		elseif(APPLE)
 			add_compile_options(-fsanitize=address -fsanitize-address-use-after-scope -fsanitize=undefined)
 			add_link_options(-fsanitize=address -fsanitize-address-use-after-scope -fsanitize=undefined)
-		endif()
-	else()
-		if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND PROJECT_IS_TOP_LEVEL)
-			# enable hot reloading
-			add_compile_options("$<$<CONFIG:Debug>:/ZI>")
-			add_link_options("$<$<CONFIG:Debug>:/INCREMENTAL>")
 		endif()
 	endif()
 endif()
@@ -76,7 +67,14 @@ if(PROJECT_IS_TOP_LEVEL)
 	option(BOX2D_UNIT_TESTS "Build the Box2D unit tests" ON)
 	
 	if(BOX2D_UNIT_TESTS OR BOX2D_SAMPLES OR BOX2D_BENCHMARKS)
-		# Emscripten pthread support
+
+		if(MSVC AND NOT BOX2D_SANITIZE)
+			# enable hot reloading
+			add_compile_options("$<$<CONFIG:Debug>:/ZI>")
+			add_link_options("$<$<CONFIG:Debug>:/INCREMENTAL>")
+		endif()
+
+		# Emscripten pthread support for enkiTS
 		if(EMSCRIPTEN)
 			set(EMSCRIPTEN_PTHREADS_COMPILER_FLAGS "-pthread -s USE_PTHREADS=1")
 			set(EMSCRIPTEN_PTHREADS_LINKER_FLAGS "${EMSCRIPTEN_PTHREADS_COMPILER_FLAGS} -s ALLOW_MEMORY_GROWTH")
@@ -84,6 +82,17 @@ if(PROJECT_IS_TOP_LEVEL)
 			string(APPEND CMAKE_CXX_FLAGS " ${EMSCRIPTEN_PTHREADS_COMPILER_FLAGS}")
 			string(APPEND CMAKE_EXE_LINKER_FLAGS " ${EMSCRIPTEN_PTHREADS_LINKER_FLAGS}")
 		endif()
+
+		# Task system used in tests and samples
+		set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "Build enkiTS examples")
+		FetchContent_Declare(
+			enkits
+			GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
+			GIT_TAG master
+			GIT_SHALLOW TRUE
+			GIT_PROGRESS TRUE
+		)
+		FetchContent_MakeAvailable(enkits)
 
 		add_subdirectory(shared)
 	endif()

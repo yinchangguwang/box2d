@@ -21,7 +21,7 @@ static int ShapeMassTest( void )
 		b2MassData md = b2ComputeCircleMass( &circle, 1.0f );
 		ENSURE_SMALL( md.mass - B2_PI, FLT_EPSILON );
 		ENSURE( md.center.x == 1.0f && md.center.y == 0.0f );
-		ENSURE_SMALL( md.rotationalInertia - 0.5f * B2_PI, FLT_EPSILON );
+		ENSURE_SMALL( md.rotationalInertia - 1.5f * B2_PI, FLT_EPSILON );
 	}
 
 	{
@@ -31,8 +31,8 @@ static int ShapeMassTest( void )
 		b2MassData md = b2ComputeCapsuleMass( &capsule, 1.0f );
 
 		// Box that full contains capsule
-		b2Polygon r = b2MakeBox( radius + 0.5f * length, radius );
-		b2MassData mdUpper = b2ComputePolygonMass( &r, 1.0f );
+		b2Polygon r = b2MakeBox( radius, radius + 0.5f * length );
+		b2MassData mdr = b2ComputePolygonMass( &r, 1.0f );
 
 		// Approximate capsule using convex hull
 		b2Vec2 points[2 * N];
@@ -55,10 +55,10 @@ static int ShapeMassTest( void )
 
 		b2Hull hull = b2ComputeHull( points, 2 * N );
 		b2Polygon ac = b2MakePolygon( &hull, 0.0f );
-		b2MassData mdLower = b2ComputePolygonMass( &ac, 1.0f );
+		b2MassData ma = b2ComputePolygonMass( &ac, 1.0f );
 
-		ENSURE( mdLower.mass < md.mass && md.mass < mdUpper.mass );
-		ENSURE( mdLower.rotationalInertia < md.rotationalInertia && md.rotationalInertia < mdUpper.rotationalInertia );
+		ENSURE( ma.mass < md.mass && md.mass < mdr.mass );
+		ENSURE( ma.rotationalInertia < md.rotationalInertia && md.rotationalInertia < mdr.rotationalInertia );
 	}
 
 	{
@@ -67,20 +67,6 @@ static int ShapeMassTest( void )
 		ENSURE_SMALL( md.center.x, FLT_EPSILON );
 		ENSURE_SMALL( md.center.y, FLT_EPSILON );
 		ENSURE_SMALL( md.rotationalInertia - 8.0f / 3.0f, 2.0f * FLT_EPSILON );
-	}
-
-	{
-		b2Vec2 offset = {0.4f, -0.7f};
-		b2Polygon b1 = b2MakeBox( 0.25f, 0.5f );
-		b2Polygon b2 = b2MakeOffsetBox( 0.25f, 0.5f, offset, b2Rot_identity );
-
-		b2MassData m1 = b2ComputePolygonMass( &b1, 1.0f );
-		b2MassData m2 = b2ComputePolygonMass( &b2, 1.0f );
-		
-		ENSURE_SMALL( m1.mass - m2.mass, FLT_EPSILON );
-		ENSURE_SMALL( m1.rotationalInertia - m2.rotationalInertia, FLT_EPSILON );
-		ENSURE_SMALL( m2.center.x - offset.x, FLT_EPSILON );
-		ENSURE_SMALL( m2.center.y - offset.y, FLT_EPSILON );
 	}
 
 	return 0;
@@ -122,17 +108,17 @@ static int PointInShapeTest( void )
 
 	{
 		bool hit;
-		hit = b2PointInCircle(&circle,  p1 );
+		hit = b2PointInCircle( p1, &circle );
 		ENSURE( hit == true );
-		hit = b2PointInCircle( &circle, p2 );
+		hit = b2PointInCircle( p2, &circle );
 		ENSURE( hit == false );
 	}
 
 	{
 		bool hit;
-		hit = b2PointInPolygon( &box,  p1);
+		hit = b2PointInPolygon( p1, &box );
 		ENSURE( hit == true );
-		hit = b2PointInPolygon(&box,  p2);
+		hit = b2PointInPolygon( p2, &box );
 		ENSURE( hit == false );
 	}
 
@@ -144,7 +130,7 @@ static int RayCastShapeTest( void )
 	b2RayCastInput input = { { -4.0f, 0.0f }, { 8.0f, 0.0f }, 1.0f };
 
 	{
-		b2CastOutput output = b2RayCastCircle( &circle, & input );
+		b2CastOutput output = b2RayCastCircle( &input, &circle );
 		ENSURE( output.hit );
 		ENSURE_SMALL( output.normal.x + 1.0f, FLT_EPSILON );
 		ENSURE_SMALL( output.normal.y, FLT_EPSILON );
@@ -152,7 +138,7 @@ static int RayCastShapeTest( void )
 	}
 
 	{
-		b2CastOutput output = b2RayCastPolygon( &box, & input);
+		b2CastOutput output = b2RayCastPolygon( &input, &box );
 		ENSURE( output.hit );
 		ENSURE_SMALL( output.normal.x + 1.0f, FLT_EPSILON );
 		ENSURE_SMALL( output.normal.y, FLT_EPSILON );
@@ -160,7 +146,7 @@ static int RayCastShapeTest( void )
 	}
 
 	{
-		b2CastOutput output = b2RayCastSegment( &segment, &input, true );
+		b2CastOutput output = b2RayCastSegment( &input, &segment, true );
 		ENSURE( output.hit );
 		ENSURE_SMALL( output.normal.x + 1.0f, FLT_EPSILON );
 		ENSURE_SMALL( output.normal.y, FLT_EPSILON );

@@ -7,8 +7,8 @@ set(BOX2D_SHARED_FILES
 	determinism.h
 	human.c
 	human.h
-	utils.c
-	utils.h
+	random.c
+	random.h
 )
 
 add_library(shared STATIC ${BOX2D_SHARED_FILES})

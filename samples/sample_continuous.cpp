@@ -3,8 +3,8 @@
 
 #include "draw.h"
 #include "human.h"
+#include "random.h"
 #include "sample.h"
-#include "utils.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -37,8 +37,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 0.0f };
-			m_context->camera.zoom = 25.0f * 0.45f;
+			m_context->camera.m_center = { 0.0f, 0.0f };
+			m_context->camera.m_zoom = 25.0f * 0.45f;
 		}
 
 		b2BodyDef bodyDef = b2DefaultBodyDef();
@@ -65,7 +65,7 @@ public:
 			b2CreateSegmentShape( groundId, &shapeDef, &segment );
 		}
 
-		m_shapeType = e_circleShape;
+		m_shapeType = e_boxShape;
 		m_bodyId = b2_nullBodyId;
 		m_enableHitEvents = true;
 
@@ -86,7 +86,6 @@ public:
 		bodyDef.linearVelocity = { 10.0f, 20.0f };
 		bodyDef.position = { 0.0f, 0.0f };
 		bodyDef.gravityScale = 0.0f;
-		bodyDef.isBullet = true;
 
 		// Circle shapes centered on the body can spin fast without risk of tunnelling.
 		bodyDef.allowFastRotation = m_shapeType == e_circleShape;
@@ -95,8 +94,8 @@ public:
 
 		b2ShapeDef shapeDef = b2DefaultShapeDef();
 		shapeDef.density = 1.0f;
-		shapeDef.material.restitution = 1.0f;
-		shapeDef.material.friction = 0.0f;
+		shapeDef.material.restitution = 1.2f;
+		shapeDef.material.friction = 0.3f;
 		shapeDef.enableHitEvents = m_enableHitEvents;
 
 		if ( m_shapeType == e_circleShape )
@@ -106,7 +105,7 @@ public:
 		}
 		else if ( m_shapeType == e_capsuleShape )
 		{
-			b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0f }, 0.25f };
+			b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0 }, 0.25f };
 			b2CreateCapsuleShape( m_bodyId, &shapeDef, &capsule );
 		}
 		else
@@ -119,9 +118,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 100.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 50.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
 
 		ImGui::Begin( "Bounce House", nullptr, ImGuiWindowFlags_NoResize );
@@ -170,8 +168,8 @@ public:
 			HitEvent* e = m_hitEvents + i;
 			if ( e->stepIndex > 0 && m_stepCount <= e->stepIndex + 30 )
 			{
-				DrawCircle( m_draw, e->point, 0.1f, b2_colorOrangeRed );
-				DrawWorldString( m_draw, m_camera, e->point, b2_colorWhite, "%.1f", e->speed );
+				m_context->draw.DrawCircle( e->point, 0.1f, b2_colorOrangeRed );
+				m_context->draw.DrawString( e->point, "%.1f", e->speed );
 			}
 		}
 
@@ -200,8 +198,8 @@ public:
 	explicit BounceHumans( SampleContext* context )
 		: Sample( context )
 	{
-		m_context->camera.center = { 0.0f, 0.0f };
-		m_context->camera.zoom = 12.0f;
+		m_context->camera.m_center = { 0.0f, 0.0f };
+		m_context->camera.m_zoom = 12.0f;
 
 		b2BodyDef bodyDef = b2DefaultBodyDef();
 		b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
@@ -256,7 +254,7 @@ public:
 		b2CosSin cs2 = b2ComputeCosSin( m_time );
 		float gravity = 10.0f;
 		b2Vec2 gravityVec = { gravity * cs1.sine, gravity * cs2.cosine };
-		DrawLine( m_draw, b2Vec2_zero, b2Vec2{ 3.0f * cs1.sine, 3.0f * cs2.cosine }, b2_colorWhite );
+		m_context->draw.DrawSegment( b2Vec2_zero, b2Vec2{ 3.0f * cs1.sine, 3.0f * cs2.cosine }, b2_colorWhite );
 		m_time += timeStep;
 		m_countDown -= timeStep;
 		b2World_SetGravity( m_worldId, gravityVec );
@@ -285,8 +283,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 0.0f };
-			m_context->camera.zoom = 25.0f * 0.35f;
+			m_context->camera.m_center = { 0.0f, 0.0f };
+			m_context->camera.m_zoom = 25.0f * 0.35f;
 		}
 
 		//
@@ -324,7 +322,7 @@ public:
 		bodyDef.linearVelocity = { 0.0f, m_speed };
 		bodyDef.position = { 0.0f, 10.0f + m_yOffset };
 		bodyDef.rotation = b2MakeRot( 0.5f * B2_PI );
-		bodyDef.motionLocks.angularZ = true;
+		bodyDef.fixedRotation = true;
 		m_bodyId = b2CreateBody( m_worldId, &bodyDef );
 
 		b2ShapeDef shapeDef = b2DefaultShapeDef();
@@ -332,7 +330,7 @@ public:
 		b2Circle circle = { { 0.0f, 0.0f }, 0.5f };
 		m_shapeId = b2CreateCircleShape( m_bodyId, &shapeDef, &circle );
 
-		// b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0f }, 0.25f };
+		// b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0 }, 0.25f };
 		// m_shapeId = b2CreateCapsuleShape( m_bodyId, &shapeDef, &capsule );
 
 		// float h = 0.5f;
@@ -342,9 +340,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 140.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 50.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
 
 		ImGui::Begin( "Chain Drop", nullptr, ImGuiWindowFlags_NoResize );
@@ -381,8 +378,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 10.0f };
-			m_context->camera.zoom = 15.0f;
+			m_context->camera.m_center = { 0.0f, 10.0f };
+			m_context->camera.m_zoom = 15.0f;
 		}
 
 		// b2_toiHitCount = 0;
@@ -466,8 +463,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 10.0f };
-			m_context->camera.zoom = 15.0f;
+			m_context->camera.m_center = { 0.0f, 10.0f };
+			m_context->camera.m_zoom = 15.0f;
 		}
 
 		// b2_toiHitCount = 0;
@@ -521,8 +518,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 1.0f, 5.0f };
-			m_context->camera.zoom = 25.0f * 0.25f;
+			m_context->camera.m_center = { 1.0f, 5.0f };
+			m_context->camera.m_zoom = 25.0f * 0.25f;
 		}
 
 		{
@@ -599,9 +596,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 110.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 50.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 140.0f, height ) );
 
 		ImGui::Begin( "Skinny Box", nullptr, ImGuiWindowFlags_NoResize );
@@ -659,8 +655,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 1.5f, 16.0f };
-			m_context->camera.zoom = 25.0f * 0.8f;
+			m_context->camera.m_center = { 1.5f, 16.0f };
+			m_context->camera.m_zoom = 25.0f * 0.8f;
 		}
 
 		m_groundId = b2_nullBodyId;
@@ -856,7 +852,7 @@ public:
 		}
 		else if ( m_shapeType == e_capsuleShape )
 		{
-			b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0f }, 0.25f };
+			b2Capsule capsule = { { -0.5f, 0.0f }, { 0.5f, 0.0 }, 0.25f };
 			m_shapeId = b2CreateCapsuleShape( m_bodyId, &shapeDef, &capsule );
 		}
 		else
@@ -869,9 +865,8 @@ public:
 
 	void UpdateGui() override
 	{
-		float fontSize = ImGui::GetFontSize();
 		float height = 140.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
+		ImGui::SetNextWindowPos( ImVec2( 10.0f, m_context->camera.m_height - height - 50.0f ), ImGuiCond_Once );
 		ImGui::SetNextWindowSize( ImVec2( 180.0f, height ) );
 
 		ImGui::Begin( "Ghost Bumps", nullptr, ImGuiWindowFlags_NoResize );
@@ -948,8 +943,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 1.0f, 5.0f };
-			m_context->camera.zoom = 25.0f * 0.25f;
+			m_context->camera.m_center = { 1.0f, 5.0f };
+			m_context->camera.m_zoom = 25.0f * 0.25f;
 		}
 
 		{
@@ -997,8 +992,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 1.75f };
-			m_context->camera.zoom = 2.5f;
+			m_context->camera.m_center = { 0.0f, 1.75f };
+			m_context->camera.m_zoom = 2.5f;
 		}
 
 		{
@@ -1042,8 +1037,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 1.75f };
-			m_context->camera.zoom = 2.0f;
+			m_context->camera.m_center = { 0.0f, 1.75f };
+			m_context->camera.m_zoom = 2.0f;
 		}
 
 		{
@@ -1091,8 +1086,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 7.0f, 5.0f };
-			m_context->camera.zoom = 6.0f;
+			m_context->camera.m_center = { 7.0f, 5.0f };
+			m_context->camera.m_zoom = 6.0f;
 		}
 
 		float pixelsPerMeter = 30.f;
@@ -1123,7 +1118,7 @@ public:
 			// ballShapeDef.restitution = 1.f;
 			b2CreatePolygonShape( m_ballId, &ballShapeDef, &ballShape );
 			b2Body_SetLinearVelocity( m_ballId, { 0.f, -5.0f } );
-			b2Body_SetMotionLocks( m_ballId, { false, false, true } );
+			b2Body_SetFixedRotation( m_ballId, true );
 		}
 	}
 
@@ -1157,8 +1152,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 7.0f, 5.0f };
-			m_context->camera.zoom = 6.0f;
+			m_context->camera.m_center = { 7.0f, 5.0f };
+			m_context->camera.m_zoom = 6.0f;
 		}
 
 		float pixelsPerMeter = 30.f;
@@ -1192,8 +1187,8 @@ public:
 			ballShapeDef.material.restitution = 1.f;
 			b2CreateCircleShape( m_ballId, &ballShapeDef, &ballShape );
 
-			b2Body_SetLinearVelocity( m_ballId, { 0.f, -2.9f } );	   // Initial velocity
-			b2Body_SetMotionLocks( m_ballId, { false, false, true } ); // Do not rotate a ball
+			b2Body_SetLinearVelocity( m_ballId, { 0.f, -2.9f } ); // Initial velocity
+			b2Body_SetFixedRotation( m_ballId, true );			  // Do not rotate a ball
 		}
 	}
 
@@ -1227,10 +1222,10 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 1.5f };
-			m_context->camera.zoom = 3.0f;
+			m_context->camera.m_center = { 0.0f, 1.5f };
+			m_context->camera.m_zoom = 3.0f;
 			m_context->enableSleep = false;
-			m_context->debugDraw.drawJoints = false;
+			m_context->drawJoints = false;
 		}
 
 #if 0
@@ -1498,7 +1493,7 @@ public:
 	{
 #if 0
 		ImGui::SetNextWindowPos( ImVec2( 0.0f, 0.0f ) );
-		ImGui::SetNextWindowSize( ImVec2( float( m_context->camera.width ), float( m_camera->height ) ) );
+		ImGui::SetNextWindowSize( ImVec2( float( m_context->camera.m_width ), float( m_context->camera.m_height ) ) );
 		ImGui::SetNextWindowBgAlpha( 0.0f );
 		ImGui::Begin( "DropBackground", nullptr,
 					  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
@@ -1507,11 +1502,11 @@ public:
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 		const char* ContinuousText = m_continuous && m_speculative ? "Continuous ON" : "Continuous OFF";
-		drawList->AddText( m_largeFont, m_largeFont->FontSize, { 40.0f, 40.0f }, IM_COL32_WHITE, ContinuousText );
+		drawList->AddText( m_context->draw.m_largeFont, m_context->draw.m_largeFont->FontSize, { 40.0f, 40.0f }, IM_COL32_WHITE, ContinuousText );
 
 		if ( m_frameSkip > 0 )
 		{
-			drawList->AddText( m_mediumFont, m_mediumFont->FontSize, { 40.0f, 40.0f + 64.0f + 20.0f },
+			drawList->AddText( m_context->draw.m_mediumFont, m_context->draw.m_mediumFont->FontSize, { 40.0f, 40.0f + 64.0f + 20.0f },
 							   IM_COL32( 200, 200, 200, 255 ), "Slow Time" );
 		}
 
@@ -1567,11 +1562,11 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 9.0f };
-			m_context->camera.zoom = 25.0f * 0.5f;
+			m_context->camera.m_center = { 0.0f, 9.0f };
+			m_context->camera.m_zoom = 25.0f * 0.5f;
 		}
 
-		m_context->debugDraw.drawJoints = false;
+		m_context->drawJoints = false;
 
 		// Ground body
 		b2BodyId groundId = {};
@@ -1610,22 +1605,22 @@ public:
 			b2CreatePolygonShape( rightFlipperId, &shapeDef, &box );
 
 			b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
-			jointDef.base.bodyIdA = groundId;
-			jointDef.base.localFrameB.p = b2Vec2_zero;
+			jointDef.bodyIdA = groundId;
+			jointDef.localAnchorB = b2Vec2_zero;
 			jointDef.enableMotor = true;
 			jointDef.maxMotorTorque = 1000.0f;
 			jointDef.enableLimit = true;
 
 			jointDef.motorSpeed = 0.0f;
-			jointDef.base.localFrameA.p = p1;
-			jointDef.base.bodyIdB = leftFlipperId;
+			jointDef.localAnchorA = p1;
+			jointDef.bodyIdB = leftFlipperId;
 			jointDef.lowerAngle = -30.0f * B2_PI / 180.0f;
 			jointDef.upperAngle = 5.0f * B2_PI / 180.0f;
 			m_leftJointId = b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 			jointDef.motorSpeed = 0.0f;
-			jointDef.base.localFrameA.p = p2;
-			jointDef.base.bodyIdB = rightFlipperId;
+			jointDef.localAnchorA = p2;
+			jointDef.bodyIdB = rightFlipperId;
 			jointDef.lowerAngle = -5.0f * B2_PI / 180.0f;
 			jointDef.upperAngle = 30.0f * B2_PI / 180.0f;
 			m_rightJointId = b2CreateRevoluteJoint( m_worldId, &jointDef );
@@ -1647,10 +1642,10 @@ public:
 			b2CreatePolygonShape( bodyId, &shapeDef, &box2 );
 
 			b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
-			jointDef.base.bodyIdA = groundId;
-			jointDef.base.bodyIdB = bodyId;
-			jointDef.base.localFrameA.p = bodyDef.position;
-			jointDef.base.localFrameB.p = b2Vec2_zero;
+			jointDef.bodyIdA = groundId;
+			jointDef.bodyIdB = bodyId;
+			jointDef.localAnchorA = bodyDef.position;
+			jointDef.localAnchorB = b2Vec2_zero;
 			jointDef.enableMotor = true;
 			jointDef.maxMotorTorque = 0.1f;
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
@@ -1659,8 +1654,8 @@ public:
 			bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box1 );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box2 );
-			jointDef.base.localFrameA.p = bodyDef.position;
-			jointDef.base.bodyIdB = bodyId;
+			jointDef.localAnchorA = bodyDef.position;
+			jointDef.bodyIdB = bodyId;
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 
@@ -1735,8 +1730,8 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 0.0f, 5.5f };
-			m_context->camera.zoom = 6.0f;
+			m_context->camera.m_center = { 0.0f, 5.5f };
+			m_context->camera.m_zoom = 6.0f;
 		}
 
 		{
@@ -1745,7 +1740,7 @@ public:
 			b2ShapeDef shapeDef = b2DefaultShapeDef();
 			b2Segment segment = { { -4.0f, 8.0f }, { 0.0f, 0.0f } };
 			b2CreateSegmentShape( groundId, &shapeDef, &segment );
-			segment = { { 0.0f, 0.0f }, { 0.0f, 8.0f } };
+			segment = { { 0.0f, 0.0f }, { 0.0f, 8.0 } };
 			b2CreateSegmentShape( groundId, &shapeDef, &segment );
 		}
 

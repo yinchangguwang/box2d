@@ -287,7 +287,7 @@ values the damping effect is mostly independent of the time step. At
 larger damping values, the damping effect will vary with the time step.
 This is not an issue if you use a fixed time step (recommended).
 
-Here's some math for the curious. A first-order differential equation for velocity damping is:
+Here's some math for the curious. A first-order different equation for velocity damping is:
 
 \f[
 \frac{dv}{dt} + c v = 0
@@ -925,8 +925,7 @@ is a shape that detects overlap but does not produce a response.
 You can flag any shape as being a sensor. Sensors may be static,
 kinematic, or dynamic. Remember that you may have multiple shapes per
 body and you can have any mix of sensors and solid shapes. Sensors can also
-detect other sensors. Sensor shapes have mass like regular shapes. You can set
-the density to zero if you don't want a sensor to have mass.
+detect other sensors.
 
 ```c
 b2ShapeDef shapeDef = b2DefaultShapeDef();
@@ -939,9 +938,6 @@ performance cost to generate sensor events, so they are disabled by default.
 ```c
 shapeDef.enableSensorEvents = true;
 ```
-
-Both shape involved must have this flag set to true. This allows a game to disable a
-specific sensor using `b2Shape_EnableSensorEvents`.
 
 Sensors are processed at the end of the world step and generate begin and end
 events without delay. User operations may cause overlaps to begin or end. These
@@ -957,8 +953,8 @@ one time step. So sensors do not have continuous collision detection.
 If you have fast moving object and/or small sensors then you should use a
 ray or shape cast to detect these events.
 
-You can access the current sensor overlaps from the previous world step. Be careful because some
-shape ids may be invalid due to a shape being destroyed. Use `b2Shape_IsValid` to ensure an
+You can access the current sensor overlaps. Be careful because some shape ids may
+be invalid due to a shape being destroyed. Use `b2Shape_IsValid` to ensure an
 overlapping shape is still valid.
 
 ```cpp
@@ -968,7 +964,7 @@ std::vector<b2ShapeId> overlaps;
 overlaps.resize( capacity );
 
 // Now get all overlaps and record the actual count
-int count = b2Shape_GetSensorData( sensorShapeId, overlaps.data(), capacity );
+int count = b2Shape_GetSensorOverlaps( sensorShapeId, overlaps.data(), capacity );
 overlaps.resize( count );
 
 for ( int i = 0; i < count; ++i )

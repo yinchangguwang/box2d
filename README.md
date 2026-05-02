@@ -35,7 +35,7 @@ Box2D is a 2D physics engine for games.
 - Optimized for large piles of bodies
 
 ### Samples
-- OpenGL with GLFW
+- OpenGL with GLFW and enkiTS
 - Graphical user interface with imgui
 - Many samples to demonstrate features and performance
 

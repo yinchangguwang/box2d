@@ -7,8 +7,9 @@
 
 #include "shader.h"
 
+#include "../src/core.h"
+
 #include <assert.h>
-#include <stdbool.h>
 #include <glad/glad.h>
 #include <stdio.h>
 
@@ -71,11 +72,11 @@ void PrintLogGL( uint32_t object )
 
 	if ( glIsShader( object ) )
 	{
-		glGetShaderInfoLog( object, log_length, NULL, log );
+		glGetShaderInfoLog( object, log_length, nullptr, log );
 	}
 	else if ( glIsProgram( object ) )
 	{
-		glGetProgramInfoLog( object, log_length, NULL, log );
+		glGetProgramInfoLog( object, log_length, nullptr, log );
 	}
 
 	printf( "PrintLogGL: %s", log );
@@ -87,7 +88,7 @@ static GLuint sCreateShaderFromString( const char* source, GLenum type )
 	GLuint shader = glCreateShader( type );
 	const char* sources[] = { source };
 
-	glShaderSource( shader, 1, sources, NULL );
+	glShaderSource( shader, 1, sources, nullptr );
 	glCompileShader( shader );
 
 	int success = GL_FALSE;
@@ -142,7 +143,7 @@ uint32_t CreateProgramFromStrings( const char* vertexString, const char* fragmen
 static GLuint sCreateShaderFromFile( const char* filename, GLenum type )
 {
 	FILE* file = fopen( filename, "rb" );
-	if ( file == NULL )
+	if ( file == nullptr )
 	{
 		fprintf( stderr, "Error opening %s\n", filename );
 		return 0;
@@ -152,9 +153,9 @@ static GLuint sCreateShaderFromFile( const char* filename, GLenum type )
 	long size = ftell( file );
 	fseek( file, 0, SEEK_SET );
 
-	char* source = malloc( size + 1 );
+	char* source = static_cast<char*>( malloc( size + 1 ) );
 	size_t count = fread( source, size, 1, file );
-	(void) count;
+	B2_UNUSED( count );
 	fclose( file );
 
 	source[size] = 0;
@@ -162,7 +163,7 @@ static GLuint sCreateShaderFromFile( const char* filename, GLenum type )
 	GLuint shader = glCreateShader( type );
 	const char* sources[] = { source };
 
-	glShaderSource( shader, 1, sources, NULL );
+	glShaderSource( shader, 1, sources, nullptr );
 	glCompileShader( shader );
 
 	int success = GL_FALSE;

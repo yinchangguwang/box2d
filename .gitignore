@@ -15,4 +15,6 @@ GEMINI.md
 
 **.vcxproj
 **.vcxproj.filters
-**.vcxproj.user
+**.vcxproj.
+bin/
+bin-int/
